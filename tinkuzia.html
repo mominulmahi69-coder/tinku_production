@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tinku — Easy HTML Game</title>
+  <style>
+    :root{--bg:#87CEEB;--panel:#ffffffcc;--accent:#ff6b6b}
+    *{box-sizing:border-box;font-family:Inter,system-ui,Arial}
+    html,body{height:100%;margin:0}
+    body{background:linear-gradient(#b6e0fe,#87CEEB);display:flex;align-items:center;justify-content:center}
+    .wrap{width:100%;max-width:900px;margin:20px;position:relative}
+    .card{background:var(--panel);border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,0.12);overflow:hidden}
+    header{padding:14px 18px;display:flex;align-items:center;justify-content:space-between}
+    header h1{margin:0;font-size:18px}
+    #gameArea{position:relative;height:600px;background:linear-gradient(#87CEEB,#58A);overflow:hidden}
+    canvas{display:block;background:transparent}
+
+    #loadingOverlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:20px;background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.2));backdrop-filter: blur(4px)}
+    .panel{background:rgba(255,255,255,0.85);padding:18px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,0.12);text-align:center;max-width:420px}
+    .controls{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px}
+    .btn{background:var(--accent);color:white;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-weight:600}
+    .btn--ghost{background:transparent;color:var(--accent);border:2px solid var(--accent)}
+    input[type=range]{width:120px}
+
+    .uiTop{position:absolute;top:14px;left:18px;background:rgba(255,255,255,0.8);padding:8px 12px;border-radius:10px;font-weight:700}
+    .score{position:absolute;top:14px;right:18px;background:rgba(255,255,255,0.85);padding:8px 12px;border-radius:10px;font-weight:700}
+
+    #gameOver{position:absolute;inset:0;display:none;align-items:center;justify-content:center}
+    #gameOver .panel{max-width:360px}
+
+    footer{padding:12px 18px;text-align:center;font-size:13px;color:#333}
+    @media (max-width:600px){#gameArea{height:520px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <header>
+        <h1> © MOMINUL MAHI</h1>
+        <div style="font-size:13px;color:#555">Playable offline • Save as .html</div>
+      </header>
+
+      <div id="gameArea">
+        <canvas id="gameCanvas" width="900" height="600"></canvas>
+
+        <div id="loadingOverlay">
+          <div class="panel">
+            <h2>Welcome to Tinku Production</h2>
+            <p>খাম্বা চোর ধরতে <strong>Start</strong> বাটনে ক্লিক করুন </p>
+            <div style="margin-top:10px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap">
+              <button id="toggleMusicBtn" class="btn">Pause Music</button>
+              <div class="controls">
+                <label style="font-weight:700">Volume</label>
+                <input id="volumeRange" type="range" min="0" max="1" step="0.05" value="0.5">
+              </div>
+            </div>
+            <div style="margin-top:14px">
+              <button id="startBtn" class="btn" style="font-size:18px;padding:12px 22px;border-radius:14px">Start Game</button>
+            </div>
+            <p style="margin-top:12px;font-size:13px;color:#444">Click or press <strong>Space</strong> to flap.</p>
+            <div style="margin-top:12px;padding:10px;border-radius:8px;background:#fff7;">Developer: <em>@mominulmahi69</em></div>
+          </div>
+        </div>
+
+        <div class="uiTop">Click / Space to flap</div>
+        <div class="score">Score: <span id="scoreDisplay">0</span></div>
+
+        <div id="gameOver">
+          <div class="panel">
+            <h2>MISSION FAILED SUCCESSFUL 💪</h2>
+            <p>Your score: <strong id="finalScore">0</strong></p>
+            <div style="display:flex;gap:8px;justify-content:center;margin-top:12px">
+              <button id="restartBtn" class="btn">Play Again</button>
+              <button id="toMenuBtn" class="btn--ghost">Back to Menu</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer>Made with ♥ — Tinku Production LTD</footer>
+    </div>
+  </div>
+
+  <script>
+  const ASSETS = {
+    bgMusic: 'https://files.catbox.moe/5jg7dj.mp3',
+    endSound: 'https://files.catbox.moe/03bf8u.mp3',
+    flapSound: 'https://files.catbox.moe/g6spg1.mp3',
+    birdImg: 'https://i.ibb.co.com/F4d9KqLq/IMG-20251030-WA0009-removebg-preview.png',
+    towerImg: 'https://i.ibb.co.com/67YnQR27/IMG-20251030-WA0011-removebg-preview.png'
+  };
+
+  const canvas=document.getElementById('gameCanvas');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  const loadingOverlay=document.getElementById('loadingOverlay');
+  const startBtn=document.getElementById('startBtn');
+  const toggleMusicBtn=document.getElementById('toggleMusicBtn');
+  const volumeRange=document.getElementById('volumeRange');
+  const scoreDisplay=document.getElementById('scoreDisplay');
+  const gameOverEl=document.getElementById('gameOver');
+  const finalScore=document.getElementById('finalScore');
+  const restartBtn=document.getElementById('restartBtn');
+  const toMenuBtn=document.getElementById('toMenuBtn');
+
+  const bgAudio=new Audio(ASSETS.bgMusic);bgAudio.loop=true;bgAudio.volume=parseFloat(volumeRange.value);
+  const endAudio=new Audio(ASSETS.endSound);endAudio.volume=0.8;
+  const flapAudio=new Audio(ASSETS.flapSound);flapAudio.volume=0.6;
+
+  const birdImage=new Image();birdImage.src=ASSETS.birdImg;
+  const towerImage=new Image();towerImage.src=ASSETS.towerImg;
+
+  let frame=0,score=0,gameRunning=false,pipes=[];
+  const bird={x:170,y:H/2,w:48,h:36,vy:0,gravity:0.35,lift:-8,rotation:0};
+
+  function stopEndAudio(){endAudio.pause();endAudio.currentTime=0;}
+
+  function resetGame(){
+    frame=0;score=0;pipes=[];bird.y=H/2;bird.vy=0;gameRunning=true;gameOverEl.style.display='none';scoreDisplay.textContent=score;
+    stopEndAudio();
+  }
+
+  function flap(){if(!gameRunning)return;bird.vy=bird.lift;flapAudio.currentTime=0;flapAudio.play();}
+  canvas.addEventListener('click',()=>{if(gameRunning)flap();});
+  document.addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();if(!gameRunning)return;flap();}});
+
+  class Pipe{
+    constructor(x,gapY,gapSize=220){this.x=x;this.w=80;this.gapY=gapY;this.gapSize=gapSize;this.passed=false;}
+    update(){this.x-=2.1;}
+    draw(){
+      const topH=this.gapY-this.gapSize/2;const bottomY=this.gapY+this.gapSize/2;
+      ctx.drawImage(towerImage,this.x,0,this.w,topH);
+      ctx.drawImage(towerImage,this.x,bottomY,this.w,H-bottomY);
+    }
+  }
+  function spawnPipe(){const gapY=150+Math.random()*(H-300);pipes.push(new Pipe(W+40,gapY,220));}
+
+  function update(){
+    frame++;bird.vy+=bird.gravity;bird.y+=bird.vy;bird.rotation=Math.max(Math.min(bird.vy*4,45),-30);
+    if(frame%140===0)spawnPipe();
+    for(const p of pipes)p.update();
+    if(pipes.length&&pipes[0].x+pipes[0].w<-50)pipes.shift();
+
+    for(const p of pipes){
+      if(!p.passed&&p.x+p.w<bird.x){p.passed=true;score++;scoreDisplay.textContent=score;}
+      const bw=bird.w,bh=bird.h,bx=bird.x,by=bird.y-bh/2;
+      const topH=p.gapY-p.gapSize/2,bottomY=p.gapY+p.gapSize/2;
+      if(boxIntersect(bx,by,bw,bh,p.x,0,p.w,topH)||boxIntersect(bx,by,bw,bh,p.x,bottomY,p.w,H-bottomY))endGame();
+    }
+    if(bird.y-bird.h/2<0||bird.y+bird.h/2>H)endGame();
+  }
+  function boxIntersect(ax,ay,aw,ah,bx,by,bw,bh){return ax<bx+bw&&ax+aw>bx&&ay<by+bh&&ay+ah>by;}
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#87CEEB');g.addColorStop(1,'#58a');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+    for(const p of pipes)p.draw();
+    ctx.save();ctx.translate(bird.x+bird.w/2,bird.y);ctx.rotate(bird.rotation*Math.PI/180);ctx.drawImage(birdImage,-bird.w/2,-bird.h/2,bird.w,bird.h);ctx.restore();
+  }
+
+  let loopId=null;
+  function loop(){update();draw();if(gameRunning)loopId=requestAnimationFrame(loop);}
+
+  function startGame(){
+  resetGame();
+  loadingOverlay.style.display='none';
+  if(bgAudio.paused) bgAudio.play(); // মিউজিক চালু থাকবে বা চালু হবে
+  loop();
+}
+
+ function endGame(){
+  if(!gameRunning)return;
+  gameRunning=false;
+  cancelAnimationFrame(loopId);
+  finalScore.textContent=score;
+  gameOverEl.style.display='flex';
+  
+  // 🔇 গেম ওভার হলে ব্যাকগ্রাউন্ড মিউজিক বন্ধ হবে
+  bgAudio.pause();
+  bgAudio.currentTime = 0;
+  
+  // 🎵 গেম ওভার সাউন্ড প্লে
+  endAudio.currentTime=0;
+  endAudio.play();
+}
+
+
+  startBtn.onclick=()=>startGame();
+  restartBtn.onclick=()=>{stopEndAudio();startGame();};
+  toMenuBtn.onclick=()=>{stopEndAudio();loadingOverlay.style.display='flex';gameOverEl.style.display='none';};
+
+  toggleMusicBtn.onclick=()=>{if(bgAudio.paused){bgAudio.play();toggleMusicBtn.textContent='Pause Music';}else{bgAudio.pause();toggleMusicBtn.textContent='Play Music';}};
+  volumeRange.oninput=()=>{const v=parseFloat(volumeRange.value);bgAudio.volume=v;flapAudio.volume=Math.min(0.9,v+0.1);endAudio.volume=Math.min(1,v+0.3);};
+  bgAudio.play().catch(()=>{});
+  </script>
+</body>
+</html>
